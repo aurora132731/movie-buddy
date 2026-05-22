@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <title>Movie Buddy</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <section class="screen active" id="screen-home" aria-labelledby="home-title">
+        <header class="home-hero">
+          <p class="eyebrow">Movie night, synced</p>
+          <h1 id="home-title">Movie Buddy</h1>
+          <div class="hero-icon" aria-hidden="true">🎬</div>
+          <p class="hero-tagline">Swipe movies with friends and find the perfect match.</p>
+        </header>
+
+        <div class="home-actions">
+          <button class="home-button start" id="start-room-button" type="button">
+            <span class="home-button-icon" aria-hidden="true">▶</span>
+            <span>
+              <strong>Start New Game</strong>
+              <small>Create a room and get a PIN</small>
+            </span>
+          </button>
+          <button class="home-button join" id="open-join-button" type="button">
+            <span class="home-button-icon" aria-hidden="true">👥</span>
+            <span>
+              <strong>Join Game</strong>
+              <small>Enter a room PIN to join friends</small>
+            </span>
+          </button>
+        </div>
+
+        <article class="how-card">
+          <h2>How it works</h2>
+          <ol>
+            <li>Start a new game or join with a PIN</li>
+            <li>Swipe right (♥) or left (✕) on movies</li>
+            <li>Super-like (★) also counts as a yes for matching</li>
+            <li>Find movies you both liked or super-liked</li>
+          </ol>
+        </article>
+      </section>
+
+      <section class="screen" id="screen-join" aria-labelledby="join-title">
+        <div class="screen-heading">
+          <div>
+            <p class="eyebrow">Join friends</p>
+            <h2 id="join-title">Enter room PIN</h2>
+          </div>
+          <button class="small-button" id="join-back-button" type="button">Back</button>
+        </div>
+        <form class="join-form" id="join-form">
+          <p class="join-label">Room PIN</p>
+          <button class="pin-slots" id="pin-slots" type="button" aria-label="Tap to enter 4-digit room PIN">
+            <span class="pin-slot" data-slot="0">·</span>
+            <span class="pin-slot" data-slot="1">·</span>
+            <span class="pin-slot" data-slot="2">·</span>
+            <span class="pin-slot" data-slot="3">·</span>
+          </button>
+          <input id="join-pin" type="hidden" value="" />
+          <label for="join-name">Your name</label>
+          <input id="join-name" maxlength="24" autocomplete="name" placeholder="Alex" />
+          <button class="primary-button" type="submit">Join room</button>
+        </form>
+        <p class="form-hint" id="join-error" role="alert"></p>
+      </section>
+
+      <section class="screen" id="screen-lobby" aria-labelledby="menu-title">
+        <div class="screen-heading">
+          <div>
+            <p class="eyebrow">Your room</p>
+            <h2 id="menu-title">MENU</h2>
+          </div>
+          <button class="small-button" id="leave-room-button" type="button">Leave</button>
+        </div>
+        <div class="lobby-card menu-card">
+          <p class="lobby-label">Room PIN — share with friends</p>
+          <p class="room-pin" id="room-pin">----</p>
+          <button class="small-button" id="copy-pin-button" type="button">Copy PIN</button>
+          <p class="lobby-label">Share link</p>
+          <div class="share-row">
+            <input id="share-link" readonly />
+            <button class="small-button" id="copy-link-button" type="button">Copy</button>
+          </div>
+          <div class="waiting-banner" id="waiting-banner">
+            <span class="waiting-pulse" aria-hidden="true"></span>
+            <p class="lobby-status" id="lobby-status">Waiting for friends to join…</p>
+          </div>
+          <ul class="player-list" id="player-list" aria-live="polite"></ul>
+          <button class="primary-button" id="enter-swipe-button" type="button" disabled>
+            Waiting for a friend…
+          </button>
+        </div>
+      </section>
+
+      <section class="screen screen-swipe-full" id="screen-swipe" aria-labelledby="swipe-title">
+        <div class="swipe-topbar">
+          <button class="small-button ghost" id="lobby-menu-button" type="button">Menu</button>
+          <div class="swipe-stats">
+            <span id="progress-label">0 of 0 rated</span>
+            <span id="match-count-label">0 matches</span>
+          </div>
+        </div>
+
+        <div class="deck-wrap">
+          <div class="deck" id="deck" aria-live="polite"></div>
+          <div class="match-toast" id="match-toast" role="status" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="screen" id="screen-matches" aria-labelledby="matches-title">
+        <div class="screen-heading compact">
+          <div>
+            <p class="eyebrow">Both said yes</p>
+            <h2 id="matches-title">Matches</h2>
+          </div>
+        </div>
+        <div class="movie-grid" id="matches-list"></div>
+      </section>
+
+      <section class="screen" id="screen-lists" aria-labelledby="lists-title">
+        <div class="screen-heading compact">
+          <div>
+            <p class="eyebrow">Your picks</p>
+            <h2 id="lists-title">Likes and passes</h2>
+          </div>
+          <button class="small-button" id="reset-swipes-button" type="button">Reset my swipes</button>
+        </div>
+        <div class="split-lists">
+          <section>
+            <h3>Liked &amp; super-liked</h3>
+            <div class="compact-list" id="liked-list"></div>
+          </section>
+          <section>
+            <h3>Passed</h3>
+            <div class="compact-list" id="passed-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <nav class="bottom-nav hidden" id="bottom-nav" aria-label="Main navigation">
+        <button class="nav-item active" data-screen="swipe" type="button">Swipe</button>
+        <button class="nav-item" data-screen="matches" type="button">Matches</button>
+        <button class="nav-item" data-screen="lists" type="button">Lists</button>
+      </nav>
+    </div>
+
+    <dialog class="pin-pad-modal" id="pin-pad-modal">
+      <div class="pin-pad-shell">
+        <div class="pin-pad-header">
+          <h2>Enter PIN</h2>
+          <button class="small-button" id="pin-pad-close" type="button">Done</button>
+        </div>
+        <div class="pin-slots pin-slots-modal" aria-hidden="true">
+          <span class="pin-slot" data-modal-slot="0">·</span>
+          <span class="pin-slot" data-modal-slot="1">·</span>
+          <span class="pin-slot" data-modal-slot="2">·</span>
+          <span class="pin-slot" data-modal-slot="3">·</span>
+        </div>
+        <div class="pin-pad" id="pin-pad">
+          <button type="button" data-key="1">1</button>
+          <button type="button" data-key="2">2</button>
+          <button type="button" data-key="3">3</button>
+          <button type="button" data-key="4">4</button>
+          <button type="button" data-key="5">5</button>
+          <button type="button" data-key="6">6</button>
+          <button type="button" data-key="7">7</button>
+          <button type="button" data-key="8">8</button>
+          <button type="button" data-key="9">9</button>
+          <button type="button" class="pin-pad-muted" data-key="clear">Clear</button>
+          <button type="button" data-key="0">0</button>
+          <button type="button" class="pin-pad-muted" data-key="back">⌫</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="name-modal" id="name-modal">
+      <form method="dialog" class="name-form" id="name-form">
+        <h2>Your name</h2>
+        <p>Pick a name so your friend knows who joined the room.</p>
+        <input id="host-name" maxlength="24" autocomplete="name" placeholder="You" required />
+        <button class="primary-button" value="default">Continue</button>
+      </form>
+    </dialog>
+
+    <dialog class="movie-modal" id="movie-modal">
+      <button class="modal-close" id="modal-close" type="button" aria-label="Close overview">Close</button>
+      <div class="modal-content" id="modal-content"></div>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>
