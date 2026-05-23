@@ -607,30 +607,28 @@ function openPinPad() {
   pinPadModal.showModal();
 }
 
-function resetSwipeViewport() {
+function resetSwipeLayout() {
   window.scrollTo(0, 0);
   document.documentElement.scrollTop = 0;
   document.body.scrollTop = 0;
-}
-
-let swipeViewportBound = false;
-
-function bindSwipeViewportGuard() {
-  if (swipeViewportBound || !window.visualViewport) return;
-  swipeViewportBound = true;
-  window.visualViewport.addEventListener("resize", () => {
-    if (session.screen === "swipe") resetSwipeViewport();
-  });
+  document.body.style.removeProperty("transform");
+  document.body.style.removeProperty("top");
+  document.documentElement.style.removeProperty("height");
+  const swipeEl = screens.swipe;
+  if (swipeEl) {
+    swipeEl.style.removeProperty("transform");
+    swipeEl.style.removeProperty("left");
+    swipeEl.style.removeProperty("width");
+  }
 }
 
 function showScreen(name) {
   session.screen = name;
   saveSession();
-  document.body.classList.toggle("swipe-screen-active", name === "swipe");
-  if (name === "swipe") {
-    bindSwipeViewportGuard();
-    resetSwipeViewport();
-  }
+  const onSwipe = name === "swipe";
+  document.documentElement.classList.toggle("swipe-screen-active", onSwipe);
+  document.body.classList.toggle("swipe-screen-active", onSwipe);
+  if (onSwipe) resetSwipeLayout();
   Object.entries(screens).forEach(([key, element]) => {
     element.classList.toggle("active", key === name);
   });
@@ -1127,9 +1125,9 @@ function commitSwipeVote(vote, movie, card) {
     card.style.removeProperty("transition");
   }
   applyOptimisticSwipe(movie.id, vote);
-  resetSwipeViewport();
+  resetSwipeLayout();
   renderDeck();
-  resetSwipeViewport();
+  requestAnimationFrame(resetSwipeLayout);
   syncSwipeToServer(vote, movie);
 }
 
@@ -1141,10 +1139,13 @@ async function syncSwipeToServer(vote, movie) {
     saveSession();
     if (payload.matched) {
       showMatchToast(movie, "Matched on");
-    } else if (vote === "super") {
-      showMatchToast(movie, "Super liked");
     }
-    render();
+    if (session.screen === "swipe") {
+      renderDeck();
+      resetSwipeLayout();
+    } else {
+      render();
+    }
   } catch (error) {
     const me = roomState?.participants?.find((entry) => entry.id === session.participantId);
     if (me?.swipes) delete me.swipes[movie.id];
@@ -1180,9 +1181,7 @@ async function undoLastSwipe() {
 
 function updateDragGlow(card, deltaX, deltaY) {
   card.classList.remove("preview-like", "preview-pass", "preview-super");
-  if (deltaY < -70 && Math.abs(deltaY) > Math.abs(deltaX)) {
-    card.classList.add("preview-super");
-  } else if (deltaX > 55) {
+  if (deltaX > 55) {
     card.classList.add("preview-like");
   } else if (deltaX < -55) {
     card.classList.add("preview-pass");
@@ -1373,7 +1372,8 @@ function wireDrag(stage, card, movie) {
       card.dataset.dragged = "true";
     }
     const rotation = drag.deltaX / 18;
-    card.style.transform = `translate3d(${drag.deltaX}px, ${drag.deltaY}px, 0) rotate(${rotation}deg)`;
+    const clampedY = Math.max(drag.deltaY, -180);
+    card.style.transform = `translate3d(${drag.deltaX}px, ${clampedY}px, 0) rotate(${rotation}deg)`;
     updateDragGlow(card, drag.deltaX, drag.deltaY);
   });
 
