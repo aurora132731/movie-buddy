@@ -966,18 +966,24 @@ function render() {
   renderLists();
 }
 
-function renderDeck() {
+function updateSwipeChrome() {
   const movie = currentMovie();
   const ratedCount = Object.keys(mySwipes()).length;
   const matchCount = roomState?.matchStats?.length || roomState?.matches?.length || 0;
-
   const deckSize = roomMovieIds().length;
   progressLabel.textContent = `${ratedCount} of ${deckSize} rated by ${session.participantName || "you"}`;
   matchCountLabel.textContent = `${matchCount} ${matchCount === 1 ? "match" : "matches"}`;
-  deck.innerHTML = "";
   renderSwipeActionBar(movie);
+}
+
+function renderDeck() {
+  const movie = currentMovie();
+  updateSwipeChrome();
+  deck.innerHTML = "";
 
   if (!movie) {
+    const ratedCount = Object.keys(mySwipes()).length;
+    const deckSize = roomMovieIds().length;
     const deckList = deckMovies();
     if (deckList.length === 0 && deckSize > 0) {
       deck.innerHTML = `
@@ -1018,7 +1024,7 @@ function renderDeck() {
 
     card.className = "movie-card";
     card.dataset.movieId = candidate.id;
-    card.style.transform = depth ? `translateY(${depth * 8}px)` : "";
+    card.style.transform = depth ? `translate3d(0, ${depth * 8}px, 0)` : "none";
     card.style.zIndex = String(index + 1);
     card.innerHTML = `
       <div class="card-media-stage">
@@ -1118,14 +1124,9 @@ function commitSwipeVote(vote, movie, card) {
     }
   }
   drag = null;
-  if (card) {
-    card.classList.remove("preview-like", "preview-pass", "preview-super", "decision-like", "decision-pass", "decision-super");
-    card.style.removeProperty("transform");
-    card.style.removeProperty("opacity");
-    card.style.removeProperty("transition");
-  }
   matchToast.classList.remove("visible");
   matchToast.textContent = "";
+  deck.innerHTML = "";
   applyOptimisticSwipe(movie.id, vote);
   resetSwipeLayout();
   renderDeck();
@@ -1146,7 +1147,7 @@ async function syncSwipeToServer(vote, movie) {
       matchToast.textContent = "";
     }
     if (session.screen === "swipe") {
-      renderDeck();
+      updateSwipeChrome();
       resetSwipeLayout();
     } else {
       render();
@@ -1334,6 +1335,8 @@ function finishDrag(card, movie) {
           : null;
 
   if (decision) {
+    card.style.removeProperty("transform");
+    card.style.removeProperty("opacity");
     commitSwipeVote(decision, movie, card);
   } else {
     card.style.removeProperty("transform");
@@ -1377,9 +1380,11 @@ function wireDrag(stage, card, movie) {
     if (Math.hypot(drag.deltaX, drag.deltaY) > 8) {
       card.dataset.dragged = "true";
     }
-    const rotation = drag.deltaX / 18;
+    const verticalDominant = Math.abs(drag.deltaY) > Math.abs(drag.deltaX);
     const clampedY = Math.max(drag.deltaY, -180);
-    card.style.transform = `translate3d(${drag.deltaX}px, ${clampedY}px, 0) rotate(${rotation}deg)`;
+    const clampedX = verticalDominant ? 0 : Math.max(-140, Math.min(140, drag.deltaX));
+    const rotation = verticalDominant ? 0 : drag.deltaX / 18;
+    card.style.transform = `translate3d(${clampedX}px, ${clampedY}px, 0) rotate(${rotation}deg)`;
     updateDragGlow(card, drag.deltaX, drag.deltaY);
   });
 
