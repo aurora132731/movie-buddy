@@ -585,10 +585,12 @@ h3 {
 }
 
 .deck-wrap {
+  position: relative;
   display: flex;
   flex: 1 1 0;
+  flex-direction: column;
   align-items: stretch;
-  justify-content: center;
+  justify-content: stretch;
   width: 100%;
   min-height: 0;
   overflow: hidden;
@@ -596,6 +598,7 @@ h3 {
 
 .deck {
   position: relative;
+  flex: 1 1 auto;
   width: 100%;
   max-width: 440px;
   height: 100%;
@@ -782,23 +785,12 @@ h3 {
     linear-gradient(180deg, rgba(255, 77, 94, 0.12), rgba(255, 77, 94, 0.28));
 }
 
-.movie-card.preview-super::before,
-.movie-card.decision-super::before {
-  background:
-    radial-gradient(circle at center, rgba(77, 157, 255, 0.42), transparent 38%),
-    linear-gradient(180deg, rgba(77, 157, 255, 0.18), rgba(77, 157, 255, 0.36));
-}
-
 .movie-card.preview-like {
   box-shadow: 0 0 0 2px rgba(47, 214, 127, 0.65), 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
 .movie-card.preview-pass {
   box-shadow: 0 0 0 2px rgba(255, 77, 94, 0.65), 0 20px 60px rgba(0, 0, 0, 0.5);
-}
-
-.movie-card.preview-super {
-  box-shadow: 0 0 0 2px rgba(77, 157, 255, 0.75), 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
 .movie-card.decision-like::before {
@@ -1114,9 +1106,18 @@ h3 {
 }
 
 .match-toast {
-  min-height: 24px;
+  position: absolute;
+  right: 0;
+  bottom: 12px;
+  left: 0;
+  z-index: 15;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
   color: var(--green);
   font-weight: 800;
+  text-align: center;
+  pointer-events: none;
   opacity: 0;
   transition: opacity 160ms ease;
 }

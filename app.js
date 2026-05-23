@@ -1124,6 +1124,8 @@ function commitSwipeVote(vote, movie, card) {
     card.style.removeProperty("opacity");
     card.style.removeProperty("transition");
   }
+  matchToast.classList.remove("visible");
+  matchToast.textContent = "";
   applyOptimisticSwipe(movie.id, vote);
   resetSwipeLayout();
   renderDeck();
@@ -1139,6 +1141,9 @@ async function syncSwipeToServer(vote, movie) {
     saveSession();
     if (payload.matched) {
       showMatchToast(movie, "Matched on");
+    } else {
+      matchToast.classList.remove("visible");
+      matchToast.textContent = "";
     }
     if (session.screen === "swipe") {
       renderDeck();
@@ -1253,7 +1258,7 @@ function renderCompactList(container, vote) {
       ${imageTag(movie, "", "compact-poster")}
       <span>
         <strong>${movie.title}</strong><br />
-        <span class="tagline">${swipes[movie.id] === "super" ? "Super liked · " : ""}${formatImdbRatingText(movie)} · 🍅 ${formatTomato(movie)} · ${movie.genres[0]} · ${movie.year}</span>
+        <span class="tagline">${formatImdbRatingText(movie)} · 🍅 ${formatTomato(movie)} · ${movie.genres[0]} · ${movie.year}</span>
       </span>
     `;
     item.addEventListener("click", () => openMovie(movie.id));
@@ -1263,6 +1268,7 @@ function renderCompactList(container, vote) {
 }
 
 function showMatchToast(movie, label = "Matched on") {
+  if (!label) return;
   matchToast.textContent = `${label} ${movie.title}`;
   matchToast.classList.add("visible");
   window.setTimeout(() => matchToast.classList.remove("visible"), 1800);
