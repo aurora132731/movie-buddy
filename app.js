@@ -145,6 +145,11 @@ const TRAILER_OVERRIDES = {
   "dark-knight": "EXeTwQWrcwY"
 };
 
+const POSTER_OVERRIDES = {
+  "the-matrix": "https://image.tmdb.org/t/p/w780/f89U3ADr1oiB1s9GpdPQPCY8F8i.jpg",
+  goodfellas: "https://image.tmdb.org/t/p/w780/wrsh37QsfcHTzn3KqTaDopQHyKp.jpg"
+};
+
 let trailerMessageHandler = null;
 
 function trailerThumb(movie) {
@@ -332,11 +337,41 @@ function mediaItems(movie) {
   return items;
 }
 
-const moviePosterFallback = "https://i.ytimg.com/vi/tFMo3UJ4B4g/hqdefault.jpg";
+const moviePosterFallback =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='600' viewBox='0 0 400 600'%3E%3Crect fill='%23151922' width='400' height='600'/%3E%3Ctext x='50%25' y='50%25' fill='%239aa6ba' font-family='sans-serif' font-size='20' text-anchor='middle' dominant-baseline='middle'%3EPoster%3C/text%3E%3C/svg%3E";
 
-function imageTag(src, alt, className, fallback) {
-  const fb = fallback || moviePosterFallback;
-  return `<img class="${className}" src="${src}" alt="${alt}" loading="lazy" onerror="this.onerror=null;this.src='${fb}'" />`;
+function posterFor(movie) {
+  return POSTER_OVERRIDES[movie.id] || movie.poster;
+}
+
+function posterFallbackChain(movie) {
+  const videoId = trailerIdsFor(movie)[0];
+  return [
+    posterFor(movie),
+    movie.poster,
+    videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null,
+    moviePosterFallback
+  ].filter((url, index, list) => url && list.indexOf(url) === index);
+}
+
+function imageTag(movie, alt, className) {
+  const chain = posterFallbackChain(movie);
+  const primary = chain[0] || moviePosterFallback;
+  const fallbacks = chain.slice(1).join("|");
+  return `<img class="${className}" src="${primary}" alt="${alt}" loading="lazy" referrerpolicy="no-referrer" data-poster-fallbacks="${fallbacks}" />`;
+}
+
+function wirePosterImages(root = document) {
+  root.querySelectorAll("img[data-poster-fallbacks]").forEach((img) => {
+    if (img.dataset.posterWired === "1") return;
+    img.dataset.posterWired = "1";
+    const fallbacks = (img.dataset.posterFallbacks || "").split("|").filter(Boolean);
+    img.addEventListener("error", () => {
+      if (!fallbacks.length) return;
+      img.src = fallbacks.shift();
+      img.dataset.posterFallbacks = fallbacks.join("|");
+    });
+  });
 }
 
 function getMediaIndex(movie) {
@@ -398,9 +433,24 @@ function currentMovie() {
   return deckMovies().find((movie) => !mySwipes()[movie.id]);
 }
 
+function isHost() {
+  return Boolean(session.participantId && roomState?.hostId === session.participantId);
+}
+
+function matchStatsList() {
+  if (!roomState?.matchStats?.length) return [];
+  const byId = new Map(deckMovies().map((movie) => [movie.id, movie]));
+  return roomState.matchStats
+    .map((entry) => {
+      const movie = byId.get(entry.movieId);
+      if (!movie) return null;
+      return { movie, ...entry };
+    })
+    .filter(Boolean);
+}
+
 function matchedMovies() {
-  if (!roomState?.matches?.length) return [];
-  return deckMovies().filter((movie) => roomState.matches.includes(movie.id));
+  return matchStatsList().map((entry) => entry.movie);
 }
 
 function pinValue() {
@@ -496,13 +546,15 @@ async function loadMovies() {
     movies = payload.movies.map((movie) => {
       const local = localByImdb.get(movie.imdbId);
       const stableId = local?.id || (movie.id?.startsWith("tt") ? null : movie.id);
-      return {
+      const merged = {
         ...(local || {}),
         ...movie,
         id: stableId || movie.id,
         imdbId: movie.imdbId,
+        poster: POSTER_OVERRIDES[stableId || movie.id] || local?.poster || movie.poster,
         scenes: movie.scenes?.length ? movie.scenes : buildGalleryFallback(local || movie)
       };
+      return merged;
     });
   } catch {
     movies = localCatalog;
@@ -553,13 +605,21 @@ async function joinRoom(code, name) {
 async function refreshRoomSafe() {
   if (!session.roomCode) return;
   try {
-    const previousMatches = [...(roomState?.matches || [])];
+    const previousMatches = [...(roomState?.unanimousMatches || roomState?.matches || [])];
     await hydrateRoomDetails();
 
-    const newMatchId = roomState.matches.find((id) => !previousMatches.includes(id));
-    if (newMatchId) {
-      const movie = movies.find((entry) => entry.id === newMatchId);
-      if (movie) showMatchToast(movie, "New match");
+    const newUnanimousId = (roomState.unanimousMatches || []).find((id) => !previousMatches.includes(id));
+    if (newUnanimousId) {
+      const movie = movies.find((entry) => entry.id === newUnanimousId);
+      if (movie) showMatchToast(movie, "Everyone matched");
+    }
+
+    if (roomState.gameStarted && session.screen === "lobby") {
+      showScreen("swipe");
+    }
+
+    if (!roomState.gameStarted && session.screen === "swipe" && !isHost()) {
+      showScreen("lobby");
     }
 
     if (session.screen === "lobby") renderLobby();
@@ -621,6 +681,20 @@ async function resetMySwipes() {
   render();
 }
 
+async function startGameAsHost() {
+  if (!isHost()) return;
+  await api(`/api/rooms/${session.roomCode}`, {
+    method: "POST",
+    body: JSON.stringify({
+      action: "start",
+      participantId: session.participantId
+    })
+  });
+  await hydrateRoomDetails();
+  showScreen("swipe");
+  render();
+}
+
 function renderLobby() {
   if (!session.roomCode || !roomState) return;
   document.querySelector("#room-pin").textContent = session.roomCode;
@@ -629,29 +703,48 @@ function renderLobby() {
   const players = roomState.participants || [];
   const list = document.querySelector("#player-list");
   list.innerHTML = players
-    .map(
-      (player) =>
-        `<li class="${player.id === session.participantId ? "you" : ""}">${player.name}${
-          player.id === session.participantId ? " (you)" : ""
-        }</li>`
-    )
+    .map((player) => {
+      const tags = [];
+      if (player.id === session.participantId) tags.push("you");
+      if (player.id === roomState.hostId) tags.push("host");
+      const suffix = tags.length ? ` (${tags.join(" · ")})` : "";
+      return `<li class="${player.id === session.participantId ? "you" : ""}">${player.name}${suffix}</li>`;
+    })
     .join("");
 
   const status = document.querySelector("#lobby-status");
   const banner = document.querySelector("#waiting-banner");
   const startButton = document.querySelector("#enter-swipe-button");
+  const hostWaiting = document.querySelector("#host-waiting");
   const deckSize = roomState.deckSize || roomMovieIds().length;
   const ready = players.length >= 2;
+  const host = isHost();
+  const started = Boolean(roomState.gameStarted);
 
-  banner.classList.toggle("ready", ready);
-  if (ready) {
-    status.textContent = `${players.length} players in the room · ${deckSize} movies ready — start when you are.`;
-    startButton.disabled = false;
-    startButton.textContent = "Start swiping";
+  if (started) {
+    showScreen("swipe");
+    return;
+  }
+
+  banner.classList.toggle("ready", ready && host);
+  startButton.hidden = !host;
+  hostWaiting.hidden = host;
+
+  if (host) {
+    if (ready) {
+      status.textContent = `${players.length} players in the room · ${deckSize} movies ready. Tap start when everyone is here.`;
+      startButton.disabled = false;
+      startButton.textContent = "Start swiping";
+    } else {
+      status.textContent = `Share PIN ${session.roomCode} with friends. Need at least 2 players before you start.`;
+      startButton.disabled = true;
+      startButton.textContent = "Waiting for a friend…";
+    }
   } else {
-    status.textContent = `Share PIN ${session.roomCode} with a friend. ${deckSize} movies are locked in for this room.`;
-    startButton.disabled = true;
-    startButton.textContent = "Waiting for a friend…";
+    status.textContent = ready
+      ? `${players.length} players in the room · waiting for the host to begin.`
+      : `You joined room ${session.roomCode}. Waiting for more players…`;
+    hostWaiting.textContent = "Waiting for host to start the game…";
   }
 }
 
@@ -668,7 +761,7 @@ function render() {
 function renderDeck() {
   const movie = currentMovie();
   const ratedCount = Object.keys(mySwipes()).length;
-  const matchCount = roomState?.matches?.length || 0;
+  const matchCount = roomState?.matchStats?.length || roomState?.matches?.length || 0;
 
   const deckSize = roomMovieIds().length;
   progressLabel.textContent = `${ratedCount} of ${deckSize} rated by ${session.participantName || "you"}`;
@@ -764,20 +857,19 @@ function renderDeck() {
 
     deck.appendChild(card);
   });
+
+  wirePosterImages(deck);
 }
 
 function renderMainPoster(movie) {
-  const fallback = movie.poster || `https://i.ytimg.com/vi/${trailerIdsFor(movie)[0]}/hqdefault.jpg`;
   return `
     <div class="scene-frame">
-      ${imageTag(movie.poster, movie.title, "media-image media-image-poster", fallback)}
+      ${imageTag(movie, movie.title, "media-image media-image-poster")}
     </div>
   `;
 }
 
 function renderCardMedia(movie, media, playTrailer = false) {
-  const fallback = movie.poster || `https://i.ytimg.com/vi/${trailerIdsFor(movie)[0]}/hqdefault.jpg`;
-
   if (media.type === "trailer") {
     if (playTrailer) {
       return `
@@ -794,7 +886,7 @@ function renderCardMedia(movie, media, playTrailer = false) {
 
     return `
       <div class="trailer-frame">
-        ${imageTag(media.image, `${movie.title} trailer preview`, "media-image media-image-cover", fallback)}
+        ${imageTag(movie, `${movie.title} trailer preview`, "media-image media-image-cover")}
         <button class="trailer-play" type="button" data-play-trailer aria-label="Play ${movie.title} trailer in app">
           <span>▶</span>
           Play Trailer
@@ -808,7 +900,7 @@ function renderCardMedia(movie, media, playTrailer = false) {
 
   return `
     <div class="scene-frame">
-      ${imageTag(media.image, `${movie.title} ${media.label}`, `media-image ${fitClass}`, fallback)}
+      ${imageTag({ ...movie, poster: media.image }, `${movie.title} ${media.label}`, `media-image ${fitClass}`)}
       ${caption}
     </div>
   `;
@@ -876,24 +968,42 @@ function animateDecision(vote, card = deck.querySelector(".movie-card:last-child
   window.setTimeout(() => swipe(vote), 180);
 }
 
-function renderMatches() {
-  const matches = matchedMovies();
-  matchesList.innerHTML = matches.length
-    ? ""
-    : `<p class="empty-state">No shared likes yet. Both players need to like or super-like the same movie.</p>`;
+function formatMatchNames(names) {
+  if (!names?.length) return "";
+  if (names.length <= 4) return names.join(", ");
+  return `${names.slice(0, 3).join(", ")} +${names.length - 3} more`;
+}
 
-  matches.forEach((movie) => {
+function renderMatches() {
+  const stats = matchStatsList();
+  const playerTotal = roomState?.participantCount || roomState?.participants?.length || 0;
+
+  matchesList.innerHTML = stats.length
+    ? ""
+    : `<p class="empty-state">No group matches yet. When at least 2 people like or super-like the same movie, it will show here.</p>`;
+
+  stats.forEach((entry) => {
+    const { movie, count, total, names } = entry;
+    const unanimous = count === total && total >= 2;
     const card = document.createElement("article");
     card.className = "match-card";
     card.tabIndex = 0;
     card.innerHTML = `
-      <img src="${movie.poster}" alt="${movie.title} poster" />
+      <div class="match-poster">
+        ${imageTag(movie, `${movie.title} poster`, "match-poster-image")}
+        <span class="match-count-badge">${count}<span class="match-count-of">/${total}</span></span>
+      </div>
       <div class="match-copy">
-        <h3>${movie.title}</h3>
+        <div class="match-title-row">
+          <h3>${movie.title}</h3>
+          ${unanimous ? `<span class="match-unanimous">All matched</span>` : ""}
+        </div>
+        <p class="match-people">${formatMatchNames(names)}</p>
         <div class="movie-meta">${renderMovieMeta(movie)}</div>
       </div>
     `;
     wireMetaLinks(card);
+    wirePosterImages(card);
     card.addEventListener("click", () => openMovie(movie.id));
     matchesList.appendChild(card);
   });
@@ -920,7 +1030,7 @@ function renderCompactList(container, vote) {
     item.className = "compact-movie";
     item.type = "button";
     item.innerHTML = `
-      <img src="${movie.poster}" alt="" />
+      ${imageTag(movie, "", "compact-poster")}
       <span>
         <strong>${movie.title}</strong><br />
         <span class="tagline">${swipes[movie.id] === "super" ? "Super liked · " : ""}${formatImdbRatingText(movie)} · 🍅 ${formatTomato(movie)} · ${movie.genres[0]} · ${movie.year}</span>
@@ -929,6 +1039,7 @@ function renderCompactList(container, vote) {
     item.addEventListener("click", () => openMovie(movie.id));
     container.appendChild(item);
   });
+  wirePosterImages(container);
 }
 
 async function swipe(vote) {
@@ -975,7 +1086,7 @@ function openMovie(movieId) {
   if (!movie) return;
 
   modalContent.innerHTML = `
-    <img src="${movie.poster}" alt="${movie.title}" />
+    ${imageTag(movie, movie.title, "modal-poster")}
     <section>
       <p class="eyebrow">${movie.genres.join(" / ")} · ${movie.year} · ${movie.runtime}</p>
       <h2>${movie.title}</h2>
@@ -997,6 +1108,7 @@ function openMovie(movieId) {
   `;
 
   modalContent.querySelector("[data-modal-play]")?.addEventListener("click", () => playModalTrailer(movie));
+  wirePosterImages(modalContent);
 
   modal.showModal();
 }
@@ -1190,10 +1302,14 @@ document.querySelector("#copy-pin-button")?.addEventListener("click", async () =
 });
 
 document.querySelector("#enter-swipe-button").addEventListener("click", async () => {
-  if (!movies.length) await loadMovies();
-  if (!roomState && session.roomCode) await hydrateRoomDetails();
-  showScreen("swipe");
-  render();
+  if (!isHost()) return;
+  try {
+    if (!movies.length) await loadMovies();
+    if (!roomState && session.roomCode) await hydrateRoomDetails();
+    await startGameAsHost();
+  } catch (error) {
+    alert(error.message);
+  }
 });
 
 document.querySelector("#lobby-menu-button").addEventListener("click", () => {

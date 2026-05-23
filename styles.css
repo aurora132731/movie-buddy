@@ -434,6 +434,17 @@ h3 {
   cursor: not-allowed;
 }
 
+.host-waiting {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border: 1px dashed rgba(255, 204, 102, 0.35);
+  border-radius: 12px;
+  color: var(--gold);
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.45;
+}
+
 .share-row {
   display: flex;
   gap: 8px;
@@ -960,26 +971,103 @@ h3 {
 
 .movie-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 14px;
+  grid-template-columns: 1fr;
+  gap: 12px;
 }
 
 .match-card {
-  overflow: hidden;
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 14px;
+  align-items: start;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--surface);
   cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
-.match-card img {
+.match-card:hover {
+  border-color: rgba(77, 157, 255, 0.45);
+  transform: translateY(-1px);
+}
+
+.match-poster {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #0a0c10;
+}
+
+.match-poster-image,
+.modal-poster,
+.compact-poster {
+  display: block;
   width: 100%;
-  aspect-ratio: 2 / 3;
   object-fit: cover;
+  background: #0a0c10;
+}
+
+.match-poster-image {
+  aspect-ratio: 2 / 3;
+}
+
+.match-count-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: #0b0d12;
+  background: rgba(255, 204, 102, 0.96);
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.match-count-of {
+  opacity: 0.7;
+  font-size: 11px;
+}
+
+.match-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.match-title-row h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.match-unanimous {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #07150f;
+  background: rgba(47, 214, 127, 0.92);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.match-people {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.match-copy .movie-meta {
+  gap: 6px;
 }
 
 .match-card .match-copy {
-  padding: 12px;
+  padding: 0;
+  min-width: 0;
 }
 
 .split-lists {
@@ -1006,9 +1094,11 @@ h3 {
   cursor: pointer;
 }
 
-.compact-movie img {
+.compact-movie img,
+.compact-poster {
   width: 52px;
   height: 74px;
+  flex-shrink: 0;
   border-radius: 8px;
   object-fit: cover;
 }
