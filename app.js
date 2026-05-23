@@ -14,6 +14,7 @@ const defaultSession = {
   roomCode: null,
   media: {},
   undoStack: [],
+  lobbyFromMenu: false,
   screen: "home"
 };
 
@@ -30,6 +31,7 @@ const screens = {
 };
 
 const deck = document.querySelector("#deck");
+const swipeActionBar = document.querySelector("#swipe-action-bar");
 const progressLabel = document.querySelector("#progress-label");
 const matchCountLabel = document.querySelector("#match-count-label");
 const matchesList = document.querySelector("#matches-list");
@@ -41,6 +43,7 @@ const matchToast = document.querySelector("#match-toast");
 const bottomNav = document.querySelector("#bottom-nav");
 const nameModal = document.querySelector("#name-modal");
 const pinPadModal = document.querySelector("#pin-pad-modal");
+const roomMenuModal = document.querySelector("#room-menu-modal");
 const pinHiddenInput = document.querySelector("#join-pin");
 const pinSlotsButton = document.querySelector("#pin-slots");
 let pinDigits = ["", "", "", ""];
@@ -149,7 +152,7 @@ const TRAILER_OVERRIDES = {
 };
 
 
-let trailerMessageHandler = null;
+let trailerFailTimer = null;
 
 function trailerThumb(movie) {
   const videoId = trailerIdsFor(movie)[0];
@@ -167,15 +170,37 @@ function trailerIdsFor(movie) {
   return ids;
 }
 
+function trailerWatchUrl(videoId) {
+  return `https://www.youtube.com/watch?v=${videoId}`;
+}
+
 function trailerEmbedUrl(videoId) {
   const origin = encodeURIComponent(window.location.origin);
-  return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=${origin}`;
+  return `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&playsinline=1&fs=1&origin=${origin}&widget_referrer=${origin}`;
+}
+
+function trailerEmbedMarkup(movie, videoId, { showRetry = false } = {}) {
+  return `
+    <div class="modal-trailer playing">
+      <iframe
+        src="${trailerEmbedUrl(videoId)}"
+        title="${movie.title} trailer"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen
+        referrerpolicy="strict-origin-when-cross-origin"
+      ></iframe>
+    </div>
+    <p class="trailer-fallback-row">
+      <a class="external-link" href="${trailerWatchUrl(videoId)}" target="_blank" rel="noreferrer">Open on YouTube</a>
+      ${showRetry ? `<button class="small-button" type="button" data-trailer-retry>Try another clip</button>` : ""}
+    </p>
+  `;
 }
 
 function stopTrailerPlayback() {
-  if (trailerMessageHandler) {
-    window.removeEventListener("message", trailerMessageHandler);
-    trailerMessageHandler = null;
+  if (trailerFailTimer) {
+    window.clearTimeout(trailerFailTimer);
+    trailerFailTimer = null;
   }
 }
 
@@ -204,39 +229,29 @@ function playModalTrailer(movie, attempt = 0) {
   }
 
   stopTrailerPlayback();
-  block.innerHTML = `
-    <h3>Trailer</h3>
-    <div class="modal-trailer playing">
-      <iframe
-        src="${trailerEmbedUrl(videoId)}"
-        title="${movie.title} trailer"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-        allowfullscreen
-        referrerpolicy="strict-origin-when-cross-origin"
-      ></iframe>
-    </div>
-  `;
+  const hasAlt = attempt + 1 < ids.length;
+  block.innerHTML = `<h3>Trailer</h3>${trailerEmbedMarkup(movie, videoId, { showRetry: hasAlt })}`;
+  block.querySelector("[data-trailer-retry]")?.addEventListener("click", () => playModalTrailer(movie, attempt + 1));
 
-  trailerMessageHandler = (event) => {
-    if (!event.origin.includes("youtube")) return;
-    let data;
-    try {
-      data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
-    } catch {
-      return;
-    }
-
-    const embedBlocked = data?.event === "onError" || [100, 101, 150, 2, 5].includes(data?.info);
-    if (!embedBlocked) return;
-
-    stopTrailerPlayback();
+  trailerFailTimer = window.setTimeout(() => {
+    trailerFailTimer = null;
     if (attempt + 1 < ids.length) {
       playModalTrailer(movie, attempt + 1);
       return;
     }
     showModalTrailerFallback(movie, attempt);
-  };
-  window.addEventListener("message", trailerMessageHandler);
+  }, 4500);
+
+  block.querySelector(".modal-trailer.playing iframe")?.addEventListener(
+    "load",
+    () => {
+      if (trailerFailTimer) {
+        window.clearTimeout(trailerFailTimer);
+        trailerFailTimer = null;
+      }
+    },
+    { once: true }
+  );
 }
 
 function roomMovieIds() {
@@ -266,11 +281,60 @@ function formatTomato(movie) {
   return typeof movie.tomato === "number" ? `${movie.tomato}%` : "—";
 }
 
-function cardOverviewPreview(movie, maxLength = 132) {
-  const text = String(movie.overview || movie.tagline || "").trim();
+function cardOverviewSnippet(movie, maxChars = 150) {
+  const text = (movie.overview || movie.tagline || "").trim();
   if (!text) return "";
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength).trim()}…`;
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars).trim()}…`;
+}
+
+const ACTION_ICONS = {
+  pass: `<svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19" stroke="currentColor" stroke-width="3.6" stroke-linecap="round"/></svg>`,
+  super: `<svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2l2.35 5.4 5.85.5-4.45 3.85 1.35 5.7L12 15.9l-5.1 2.75 1.35-5.7-4.45-3.85 5.85-.5L12 3.2z" fill="currentColor"/></svg>`,
+  like: `<svg class="action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.6s-6.9-4.35-9.2-8.45C1.2 8.85 3.35 5.2 6.9 5.2c1.95 0 3.45 1 4.1 2.55.65-1.55 2.15-2.55 4.1-2.55 3.55 0 5.7 3.65 4.1 6.95-2.3 4.1-9.2 8.45-9.2 8.45z" fill="currentColor"/></svg>`,
+  rewind: `<svg class="action-icon action-icon-small" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7v-4l-7 7 7 7v-4.5c4.5 0 7.5 2.25 9.5 6.5-1-4-4.5-7.5-9.5-7.5z" fill="currentColor"/></svg>`
+};
+
+function tinderActionsHtml() {
+  return `
+    <div class="tinder-actions" aria-label="Swipe actions">
+      <button class="round-action rewind" data-action="rewind" type="button" aria-label="Undo last swipe">${ACTION_ICONS.rewind}</button>
+      <div class="tinder-actions-main">
+        <button class="round-action main reject" data-action="pass" type="button" aria-label="Pass">${ACTION_ICONS.pass}</button>
+        <button class="round-action main super" data-action="super" type="button" aria-label="Super like">${ACTION_ICONS.super}</button>
+        <button class="round-action main like" data-action="like" type="button" aria-label="Like">${ACTION_ICONS.like}</button>
+      </div>
+    </div>
+  `;
+}
+
+function applyOptimisticSwipe(movieId, vote) {
+  const me = roomState?.participants?.find((entry) => entry.id === session.participantId);
+  if (!me) return;
+  me.swipes = { ...(me.swipes || {}), [movieId]: vote };
+}
+
+function wireSwipeActionBar(movie) {
+  if (!swipeActionBar || !movie) return;
+  swipeActionBar.querySelectorAll("[data-action]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const card = deck.querySelector(`.movie-card[data-movie-id="${movie.id}"]`);
+      handleCardAction(button.dataset.action, movie, card);
+    });
+  });
+}
+
+function renderSwipeActionBar(movie) {
+  if (!swipeActionBar) return;
+  if (!movie) {
+    swipeActionBar.hidden = true;
+    swipeActionBar.innerHTML = "";
+    return;
+  }
+  swipeActionBar.hidden = false;
+  swipeActionBar.innerHTML = tinderActionsHtml();
+  wireSwipeActionBar(movie);
 }
 
 const SCENE_LABELS = ["Highlight", "Key moment", "Cast moment", "Sneak peek"];
@@ -469,16 +533,16 @@ function updateCardMedia(card, movie) {
   const rightZone = stage.querySelector(".media-zone-right");
   leftZone.disabled = mediaIndex === 0;
   rightZone.disabled = mediaIndex >= media.length - 1;
-  bindTrailerPlay(stage, movie, activeMedia);
+  bindTrailerPlay(stage, movie);
 }
 
-function bindTrailerPlay(stage, movie, activeMedia) {
+function bindTrailerPlay(stage, movie) {
   const playBtn = stage.querySelector("[data-play-trailer]");
   if (!playBtn) return;
   playBtn.addEventListener("click", (event) => {
     event.stopPropagation();
-    const content = stage.querySelector(".media-content");
-    content.innerHTML = renderCardMedia(movie, activeMedia, true);
+    openMovie(movie.id);
+    window.requestAnimationFrame(() => playModalTrailer(movie));
   });
 }
 
@@ -543,9 +607,30 @@ function openPinPad() {
   pinPadModal.showModal();
 }
 
+function resetSwipeViewport() {
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+}
+
+let swipeViewportBound = false;
+
+function bindSwipeViewportGuard() {
+  if (swipeViewportBound || !window.visualViewport) return;
+  swipeViewportBound = true;
+  window.visualViewport.addEventListener("resize", () => {
+    if (session.screen === "swipe") resetSwipeViewport();
+  });
+}
+
 function showScreen(name) {
   session.screen = name;
   saveSession();
+  document.body.classList.toggle("swipe-screen-active", name === "swipe");
+  if (name === "swipe") {
+    bindSwipeViewportGuard();
+    resetSwipeViewport();
+  }
   Object.entries(screens).forEach(([key, element]) => {
     element.classList.toggle("active", key === name);
   });
@@ -676,7 +761,7 @@ async function refreshRoomSafe() {
       if (movie) showMatchToast(movie, "Everyone matched");
     }
 
-    if (roomState.gameStarted && session.screen === "lobby") {
+    if (roomState.gameStarted && session.screen === "lobby" && !session.lobbyFromMenu) {
       showScreen("swipe");
     }
 
@@ -684,6 +769,7 @@ async function refreshRoomSafe() {
       showScreen("lobby");
     }
 
+    if (roomMenuModal?.open) renderRoomMenu();
     if (session.screen === "lobby") renderLobby();
     else if (["swipe", "matches", "lists"].includes(session.screen)) render();
   } catch {
@@ -704,12 +790,62 @@ function stopPolling() {
   }
 }
 
+function renderRoomMenu() {
+  if (!session.roomCode) return;
+
+  document.querySelector("#room-menu-pin").textContent = session.roomCode;
+  document.querySelector("#room-menu-share-link").value = roomShareUrl(session.roomCode);
+
+  const players = roomState?.participants || [];
+  const list = document.querySelector("#room-menu-players");
+  list.innerHTML = players.length
+    ? players
+        .map((player) => {
+          const tags = [];
+          if (player.id === session.participantId) tags.push("you");
+          if (player.id === roomState?.hostId) tags.push("host");
+          const suffix = tags.length ? ` (${tags.join(" · ")})` : "";
+          return `<li class="${player.id === session.participantId ? "you" : ""}">${player.name}${suffix}</li>`;
+        })
+        .join("")
+    : `<li>No players loaded</li>`;
+
+  const deckSize = roomState?.deckSize || roomMovieIds().length;
+  const started = Boolean(roomState?.gameStarted);
+  const status = document.querySelector("#room-menu-status");
+  status.textContent = started
+    ? `${players.length} player${players.length === 1 ? "" : "s"} · ${deckSize} movies · game in progress`
+    : `${players.length} player${players.length === 1 ? "" : "s"} · waiting to start`;
+
+  const backButton = document.querySelector("#room-menu-back");
+  backButton.textContent = started ? "Back to swiping" : "Close";
+}
+
+async function openRoomMenu() {
+  if (!session.roomCode) {
+    showMatchToast({ title: "Not in a room" }, "");
+    return;
+  }
+
+  try {
+    await hydrateRoomDetails();
+  } catch (error) {
+    showMatchToast({ title: error.message }, "Error");
+    return;
+  }
+
+  renderRoomMenu();
+  roomMenuModal.showModal();
+}
+
 function leaveRoom() {
+  roomMenuModal?.close();
   stopPolling();
   session.roomCode = null;
   session.participantId = null;
   session.participantName = null;
   session.media = {};
+  session.lobbyFromMenu = false;
   roomState = null;
   saveSession();
   history.replaceState({}, "", window.location.pathname);
@@ -745,6 +881,8 @@ async function resetMySwipes() {
 
 async function startGameAsHost() {
   if (!isHost()) return;
+  session.lobbyFromMenu = false;
+  saveSession();
   await api(`/api/rooms/${session.roomCode}`, {
     method: "POST",
     body: JSON.stringify({
@@ -783,8 +921,18 @@ function renderLobby() {
   const host = isHost();
   const started = Boolean(roomState.gameStarted);
 
-  if (started) {
+  if (started && !session.lobbyFromMenu) {
     showScreen("swipe");
+    return;
+  }
+
+  if (started && session.lobbyFromMenu) {
+    banner.classList.remove("ready");
+    startButton.hidden = false;
+    startButton.disabled = false;
+    startButton.textContent = "Back to swiping";
+    hostWaiting.hidden = true;
+    status.textContent = `Room ${session.roomCode} · ${players.length} player${players.length === 1 ? "" : "s"} · game in progress`;
     return;
   }
 
@@ -829,6 +977,7 @@ function renderDeck() {
   progressLabel.textContent = `${ratedCount} of ${deckSize} rated by ${session.participantName || "you"}`;
   matchCountLabel.textContent = `${matchCount} ${matchCount === 1 ? "match" : "matches"}`;
   deck.innerHTML = "";
+  renderSwipeActionBar(movie);
 
   if (!movie) {
     const deckList = deckMovies();
@@ -867,10 +1016,11 @@ function renderDeck() {
     const card = document.createElement("article");
     const depth = stack.length - index - 1;
     const isTopCard = candidate.id === movie.id;
+    const overview = cardOverviewSnippet(candidate);
 
     card.className = "movie-card";
     card.dataset.movieId = candidate.id;
-    card.style.transform = `translateY(${depth * 10}px) scale(${1 - depth * 0.035})`;
+    card.style.transform = depth ? `translateY(${depth * 8}px)` : "";
     card.style.zIndex = String(index + 1);
     card.innerHTML = `
       <div class="card-media-stage">
@@ -880,26 +1030,8 @@ function renderDeck() {
         <div class="card-copy" role="button" tabindex="0" aria-label="Open ${candidate.title} overview">
           <h3>${candidate.title}</h3>
           <div class="movie-meta">${renderMovieMeta(candidate)}</div>
-          ${
-            cardOverviewPreview(candidate)
-              ? `<p class="card-overview">${cardOverviewPreview(candidate)}</p>`
-              : ""
-          }
+          ${overview ? `<p class="card-overview">${overview}</p>` : ""}
         </div>
-        ${
-          isTopCard
-            ? `
-              <div class="tinder-actions" aria-label="Swipe actions">
-                <button class="round-action rewind" data-action="rewind" type="button" aria-label="Undo last swipe">↺</button>
-                <div class="tinder-actions-main">
-                  <button class="round-action main reject" data-action="pass" type="button" aria-label="Pass"><span class="action-glyph action-glyph-x" aria-hidden="true">✕</span></button>
-                  <button class="round-action main super" data-action="super" type="button" aria-label="Super like"><span class="action-glyph" aria-hidden="true">★</span></button>
-                  <button class="round-action main like" data-action="like" type="button" aria-label="Like"><span class="action-glyph" aria-hidden="true">♥</span></button>
-                </div>
-              </div>
-            `
-            : ""
-        }
       </div>
     `;
 
@@ -915,12 +1047,6 @@ function renderDeck() {
         if (event.key === "Enter") openMovie(movie.id);
       });
       wireMetaLinks(card);
-      card.querySelectorAll("[data-action]").forEach((button) => {
-        button.addEventListener("click", (event) => {
-          event.stopPropagation();
-          handleCardAction(button.dataset.action, movie, card);
-        });
-      });
     }
 
     deck.appendChild(card);
@@ -980,7 +1106,50 @@ async function handleCardAction(action, movie, card) {
     return;
   }
   if (["like", "pass", "super"].includes(action)) {
-    animateDecision(action, card);
+    commitSwipeVote(action, movie, card);
+  }
+}
+
+function commitSwipeVote(vote, movie, card) {
+  if (!movie) return;
+  if (drag?.stage && drag.pointerId != null) {
+    try {
+      drag.stage.releasePointerCapture(drag.pointerId);
+    } catch {
+      /* ignore */
+    }
+  }
+  drag = null;
+  if (card) {
+    card.classList.remove("preview-like", "preview-pass", "preview-super", "decision-like", "decision-pass", "decision-super");
+    card.style.removeProperty("transform");
+    card.style.removeProperty("opacity");
+    card.style.removeProperty("transition");
+  }
+  applyOptimisticSwipe(movie.id, vote);
+  resetSwipeViewport();
+  renderDeck();
+  resetSwipeViewport();
+  syncSwipeToServer(vote, movie);
+}
+
+async function syncSwipeToServer(vote, movie) {
+  try {
+    const payload = await postSwipe(movie.id, vote);
+    session.undoStack = session.undoStack || [];
+    session.undoStack.push(movie.id);
+    saveSession();
+    if (payload.matched) {
+      showMatchToast(movie, "Matched on");
+    } else if (vote === "super") {
+      showMatchToast(movie, "Super liked");
+    }
+    render();
+  } catch (error) {
+    const me = roomState?.participants?.find((entry) => entry.id === session.participantId);
+    if (me?.swipes) delete me.swipes[movie.id];
+    render();
+    showMatchToast({ title: error.message }, "Error");
   }
 }
 
@@ -1018,22 +1187,6 @@ function updateDragGlow(card, deltaX, deltaY) {
   } else if (deltaX < -55) {
     card.classList.add("preview-pass");
   }
-}
-
-function animateDecision(vote, card = deck.querySelector(".movie-card:last-child")) {
-  if (!card) {
-    swipe(vote);
-    return;
-  }
-
-  card.classList.remove("preview-like", "preview-pass", "preview-super");
-  card.classList.add(`decision-${vote}`);
-  const exitX = vote === "like" ? 520 : vote === "pass" ? -520 : 0;
-  const exitY = vote === "super" ? -620 : 0;
-  const exitRotation = vote === "like" ? 24 : vote === "pass" ? -24 : 0;
-  card.style.transform = `translate(${exitX}px, ${exitY}px) rotate(${exitRotation}deg)`;
-  card.style.opacity = "0";
-  window.setTimeout(() => swipe(vote), 180);
 }
 
 function formatMatchNames(names) {
@@ -1110,26 +1263,6 @@ function renderCompactList(container, vote) {
   wirePosterImages(container);
 }
 
-async function swipe(vote) {
-  const movie = currentMovie();
-  if (!movie) return;
-
-  try {
-    const payload = await postSwipe(movie.id, vote);
-    session.undoStack = session.undoStack || [];
-    session.undoStack.push(movie.id);
-    saveSession();
-    if (payload.matched) {
-      showMatchToast(movie, "Matched on");
-    } else if (vote === "super") {
-      showMatchToast(movie, "Super liked");
-    }
-    render();
-  } catch (error) {
-    showMatchToast({ title: error.message }, "Error");
-  }
-}
-
 function showMatchToast(movie, label = "Matched on") {
   matchToast.textContent = `${label} ${movie.title}`;
   matchToast.classList.add("visible");
@@ -1181,13 +1314,48 @@ function openMovie(movieId) {
   modal.showModal();
 }
 
+function finishDrag(card, movie) {
+  if (!drag || drag.card !== card) return;
+
+  card.classList.remove("preview-like", "preview-pass", "preview-super");
+
+  const decision =
+    drag.deltaY < -120 && Math.abs(drag.deltaY) > Math.abs(drag.deltaX)
+      ? "super"
+      : drag.deltaX > 110
+        ? "like"
+        : drag.deltaX < -110
+          ? "pass"
+          : null;
+
+  if (decision) {
+    commitSwipeVote(decision, movie, card);
+  } else {
+    card.style.removeProperty("transform");
+    window.setTimeout(() => {
+      card.dataset.dragged = "false";
+    }, 0);
+  }
+  drag = null;
+}
+
 function wireDrag(stage, card, movie) {
+  stage.addEventListener(
+    "touchmove",
+    (event) => {
+      if (drag?.card === card) event.preventDefault();
+    },
+    { passive: false }
+  );
+
   stage.addEventListener("pointerdown", (event) => {
     if (event.target.closest(".trailer-play, .media-zone, .trailer-frame.playing iframe")) return;
     card.dataset.dragged = "false";
     drag = {
       card,
       movie,
+      stage,
+      pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       deltaX: 0,
@@ -1198,45 +1366,19 @@ function wireDrag(stage, card, movie) {
 
   stage.addEventListener("pointermove", (event) => {
     if (!drag || drag.card !== card) return;
+    event.preventDefault();
     drag.deltaX = event.clientX - drag.startX;
     drag.deltaY = event.clientY - drag.startY;
     if (Math.hypot(drag.deltaX, drag.deltaY) > 8) {
       card.dataset.dragged = "true";
     }
     const rotation = drag.deltaX / 18;
-    card.style.transform = `translate(${drag.deltaX}px, ${drag.deltaY}px) rotate(${rotation}deg)`;
+    card.style.transform = `translate3d(${drag.deltaX}px, ${drag.deltaY}px, 0) rotate(${rotation}deg)`;
     updateDragGlow(card, drag.deltaX, drag.deltaY);
   });
 
-  stage.addEventListener("pointerup", (event) => {
-    if (!drag || drag.card !== card) return;
-    card.classList.remove("preview-like", "preview-pass", "preview-super");
-
-    const decision =
-      drag.deltaY < -120 && Math.abs(drag.deltaY) > Math.abs(drag.deltaX)
-        ? "super"
-        : drag.deltaX > 110
-          ? "like"
-          : drag.deltaX < -110
-            ? "pass"
-            : null;
-
-    if (decision) {
-      card.classList.add(`decision-${decision}`);
-      const exitX = decision === "like" ? 520 : decision === "pass" ? -520 : drag.deltaX;
-      const exitY = decision === "super" ? -620 : drag.deltaY;
-      const exitRotation = decision === "like" ? 24 : decision === "pass" ? -24 : 0;
-      card.style.transform = `translate(${exitX}px, ${exitY}px) rotate(${exitRotation}deg)`;
-      card.style.opacity = "0";
-      window.setTimeout(() => swipe(decision), 160);
-    } else {
-      card.style.transform = "";
-      window.setTimeout(() => {
-        card.dataset.dragged = "false";
-      }, 0);
-    }
-    drag = null;
-  });
+  stage.addEventListener("pointerup", () => finishDrag(card, movie));
+  stage.addEventListener("pointercancel", () => finishDrag(card, movie));
 }
 
 function promptName(defaultValue = "") {
@@ -1371,8 +1513,15 @@ document.querySelector("#copy-pin-button")?.addEventListener("click", async () =
 });
 
 document.querySelector("#enter-swipe-button").addEventListener("click", async () => {
-  if (!isHost()) return;
   try {
+    if (roomState?.gameStarted) {
+      session.lobbyFromMenu = false;
+      saveSession();
+      showScreen("swipe");
+      render();
+      return;
+    }
+    if (!isHost()) return;
     if (!movies.length) await loadMovies();
     if (!roomState && session.roomCode) await hydrateRoomDetails();
     await startGameAsHost();
@@ -1381,12 +1530,42 @@ document.querySelector("#enter-swipe-button").addEventListener("click", async ()
   }
 });
 
-document.querySelector("#lobby-menu-button").addEventListener("click", () => {
-  showScreen("lobby");
-  renderLobby();
+document.querySelector("#lobby-menu-button").addEventListener("click", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  openRoomMenu();
 });
 
-document.querySelector("#leave-room-button").addEventListener("click", leaveRoom);
+document.querySelector("#room-menu-close").addEventListener("click", () => roomMenuModal.close());
+document.querySelector("#room-menu-back").addEventListener("click", () => roomMenuModal.close());
+roomMenuModal.addEventListener("click", (event) => {
+  if (event.target === roomMenuModal) roomMenuModal.close();
+});
+document.querySelector("#room-menu-leave").addEventListener("click", () => {
+  if (window.confirm("Leave this room?")) leaveRoom();
+});
+document.querySelector("#room-menu-copy-pin").addEventListener("click", async () => {
+  if (!session.roomCode) return;
+  try {
+    await navigator.clipboard.writeText(session.roomCode);
+    showMatchToast({ title: "PIN copied" }, "");
+  } catch {
+    showMatchToast({ title: session.roomCode }, "PIN");
+  }
+});
+document.querySelector("#room-menu-copy-link").addEventListener("click", async () => {
+  const link = document.querySelector("#room-menu-share-link").value;
+  try {
+    await navigator.clipboard.writeText(link);
+    showMatchToast({ title: "Link copied" }, "");
+  } catch {
+    document.querySelector("#room-menu-share-link").select();
+  }
+});
+
+document.querySelector("#leave-room-button").addEventListener("click", () => {
+  if (window.confirm("Leave this room?")) leaveRoom();
+});
 
 document.querySelectorAll(".nav-item").forEach((button) => {
   button.addEventListener("click", () => {

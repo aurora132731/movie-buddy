@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"
+    />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>Movie Buddy</title>
     <link rel="stylesheet" href="styles.css" />
@@ -111,6 +114,7 @@
           <div class="deck" id="deck" aria-live="polite"></div>
           <div class="match-toast" id="match-toast" role="status" aria-live="polite"></div>
         </div>
+        <div class="swipe-action-bar" id="swipe-action-bar" hidden aria-label="Swipe actions"></div>
       </section>
 
       <section class="screen" id="screen-matches" aria-labelledby="matches-title">
@@ -191,6 +195,27 @@
     <dialog class="movie-modal" id="movie-modal">
       <button class="modal-close" id="modal-close" type="button" aria-label="Close overview">Close</button>
       <div class="modal-content" id="modal-content"></div>
+    </dialog>
+
+    <dialog class="room-menu-modal" id="room-menu-modal" aria-labelledby="room-menu-title">
+      <div class="room-menu-shell">
+        <div class="room-menu-header">
+          <h2 id="room-menu-title">Room</h2>
+          <button class="small-button" id="room-menu-close" type="button">Close</button>
+        </div>
+        <p class="lobby-label">Room PIN — share with friends</p>
+        <p class="room-pin" id="room-menu-pin">----</p>
+        <button class="small-button" id="room-menu-copy-pin" type="button">Copy PIN</button>
+        <p class="lobby-label">Share link</p>
+        <div class="share-row">
+          <input id="room-menu-share-link" readonly />
+          <button class="small-button" id="room-menu-copy-link" type="button">Copy</button>
+        </div>
+        <p class="room-menu-status" id="room-menu-status"></p>
+        <ul class="player-list" id="room-menu-players" aria-live="polite"></ul>
+        <button class="primary-button" id="room-menu-back" type="button">Back to swiping</button>
+        <button class="small-button room-menu-leave" id="room-menu-leave" type="button">Leave room</button>
+      </div>
     </dialog>
 
     <script src="poster-paths.js"></script>
