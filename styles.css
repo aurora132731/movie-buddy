@@ -42,7 +42,10 @@ input {
 }
 
 .screen-swipe-full {
-  padding: 0 12px 88px;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 40px);
+  padding: 0 10px calc(72px + env(safe-area-inset-bottom, 0px));
 }
 
 .screen-swipe-full.active ~ .bottom-nav {
@@ -476,16 +479,19 @@ h3 {
 
 .deck-wrap {
   display: flex;
+  flex: 1;
+  align-items: center;
   justify-content: center;
   width: 100%;
+  min-height: 0;
 }
 
 .deck {
   position: relative;
   width: min(100%, 400px);
+  height: min(72dvh, calc(100dvh - 132px));
+  max-height: 720px;
   aspect-ratio: 9 / 16;
-  max-height: calc(100vh - 160px);
-  height: min(calc(100vh - 160px), 780px);
 }
 
 .movie-card {
@@ -536,7 +542,10 @@ h3 {
 }
 
 .scene-frame {
-  position: relative;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #0a0c10;
 }
 
 .media-image {
@@ -546,12 +555,14 @@ h3 {
 }
 
 .media-image-poster {
-  object-fit: contain;
-  background: #000;
+  object-fit: cover;
+  object-position: center center;
+  background: #0a0c10;
 }
 
 .media-image-cover {
   object-fit: cover;
+  object-position: center center;
 }
 
 .scene-caption {
@@ -605,12 +616,12 @@ h3 {
   bottom: 0;
   left: 0;
   z-index: 6;
-  padding: 0 0 14px;
+  padding: 0 0 max(10px, env(safe-area-inset-bottom, 0px));
   background: linear-gradient(
     180deg,
     transparent 0%,
-    rgba(0, 0, 0, 0.45) 18%,
-    rgba(0, 0, 0, 0.88) 55%,
+    rgba(0, 0, 0, 0.35) 12%,
+    rgba(0, 0, 0, 0.82) 42%,
     rgba(0, 0, 0, 0.98) 100%
   );
   pointer-events: none;
@@ -623,8 +634,9 @@ h3 {
 .card-media-stage::after {
   position: absolute;
   inset: 0;
+  z-index: 1;
   content: "";
-  background: linear-gradient(180deg, transparent 62%, rgba(0, 0, 0, 0.25) 100%);
+  background: linear-gradient(180deg, transparent 48%, rgba(0, 0, 0, 0.2) 72%, rgba(0, 0, 0, 0.55) 100%);
   pointer-events: none;
 }
 
@@ -783,7 +795,7 @@ h3 {
 }
 
 .card-copy {
-  padding: 48px 18px 10px;
+  padding: 36px 14px 6px;
   cursor: pointer;
 }
 
@@ -797,7 +809,11 @@ h3 {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 10px;
+}
+
+.card-footer .movie-meta {
+  gap: 6px;
+  margin-bottom: 6px;
 }
 
 .pill {
@@ -877,17 +893,17 @@ h3 {
 
 .tinder-actions {
   display: grid;
-  grid-template-columns: 44px 1fr;
+  grid-template-columns: 40px 1fr;
   align-items: center;
-  gap: 10px;
-  padding: 4px 14px 0;
+  gap: 8px;
+  padding: 6px 10px 2px;
 }
 
 .tinder-actions-main {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 22px;
+  gap: 16px;
 }
 
 .round-action {
@@ -905,9 +921,9 @@ h3 {
 }
 
 .round-action.main {
-  width: 58px;
-  height: 58px;
-  font-size: 30px;
+  width: 54px;
+  height: 54px;
+  font-size: 28px;
   line-height: 1;
 }
 

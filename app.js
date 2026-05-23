@@ -145,10 +145,6 @@ const TRAILER_OVERRIDES = {
   "dark-knight": "EXeTwQWrcwY"
 };
 
-const POSTER_OVERRIDES = {
-  "the-matrix": "https://image.tmdb.org/t/p/w780/f89U3ADr1oiB1s9GpdPQPCY8F8i.jpg",
-  goodfellas: "https://image.tmdb.org/t/p/w780/wrsh37QsfcHTzn3KqTaDopQHyKp.jpg"
-};
 
 let trailerMessageHandler = null;
 
@@ -338,38 +334,44 @@ function mediaItems(movie) {
 }
 
 const moviePosterFallback =
-  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='600' viewBox='0 0 400 600'%3E%3Crect fill='%23151922' width='400' height='600'/%3E%3Ctext x='50%25' y='50%25' fill='%239aa6ba' font-family='sans-serif' font-size='20' text-anchor='middle' dominant-baseline='middle'%3EPoster%3C/text%3E%3C/svg%3E";
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='900' viewBox='0 0 600 900'%3E%3Crect fill='%23151922' width='600' height='900'/%3E%3Ctext x='50%25' y='50%25' fill='%239aa6ba' font-family='sans-serif' font-size='22' text-anchor='middle' dominant-baseline='middle'%3EPoster%3C/text%3E%3C/svg%3E";
 
-function posterFor(movie) {
-  return POSTER_OVERRIDES[movie.id] || movie.poster;
+function posterProxyUrl(movie) {
+  return `/api/poster?movieId=${encodeURIComponent(movie.id)}`;
+}
+
+/** Vertical 2:3 crop — same size on every card, no horizontal letterboxing */
+function weservPosterUrl(movie) {
+  const raw = movie.poster;
+  if (!raw || !/^https?:\/\//i.test(raw)) return null;
+  const path = raw.replace(/^https?:\/\//i, "");
+  return `https://images.weserv.nl/?url=${encodeURIComponent(path)}&w=780&h=1170&fit=cover&output=jpg`;
 }
 
 function posterFallbackChain(movie) {
-  const videoId = trailerIdsFor(movie)[0];
-  return [
-    posterFor(movie),
-    movie.poster,
-    videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : null,
-    moviePosterFallback
-  ].filter((url, index, list) => url && list.indexOf(url) === index);
+  return [weservPosterUrl(movie), posterProxyUrl(movie), moviePosterFallback].filter(Boolean);
 }
 
 function imageTag(movie, alt, className) {
   const chain = posterFallbackChain(movie);
-  const primary = chain[0] || moviePosterFallback;
-  const fallbacks = chain.slice(1).join("|");
-  return `<img class="${className}" src="${primary}" alt="${alt}" loading="lazy" referrerpolicy="no-referrer" data-poster-fallbacks="${fallbacks}" />`;
+  const encoded = encodeURIComponent(JSON.stringify(chain.slice(1)));
+  return `<img class="${className}" src="${chain[0]}" alt="${alt}" loading="eager" decoding="async" referrerpolicy="no-referrer" data-poster-fallbacks="${encoded}" />`;
 }
 
 function wirePosterImages(root = document) {
   root.querySelectorAll("img[data-poster-fallbacks]").forEach((img) => {
     if (img.dataset.posterWired === "1") return;
     img.dataset.posterWired = "1";
-    const fallbacks = (img.dataset.posterFallbacks || "").split("|").filter(Boolean);
+    let fallbacks = [];
+    try {
+      fallbacks = JSON.parse(decodeURIComponent(img.dataset.posterFallbacks || "%5B%5D"));
+    } catch {
+      fallbacks = [];
+    }
     img.addEventListener("error", () => {
       if (!fallbacks.length) return;
       img.src = fallbacks.shift();
-      img.dataset.posterFallbacks = fallbacks.join("|");
+      img.dataset.posterFallbacks = encodeURIComponent(JSON.stringify(fallbacks));
     });
   });
 }
@@ -551,7 +553,7 @@ async function loadMovies() {
         ...movie,
         id: stableId || movie.id,
         imdbId: movie.imdbId,
-        poster: POSTER_OVERRIDES[stableId || movie.id] || local?.poster || movie.poster,
+        poster: local?.poster || movie.poster,
         scenes: movie.scenes?.length ? movie.scenes : buildGalleryFallback(local || movie)
       };
       return merged;

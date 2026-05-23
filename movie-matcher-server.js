@@ -12,6 +12,7 @@ const {
   roomPayload,
   useKv
 } = require("./lib/room-store");
+const posterHandler = require("./api/poster");
 
 const root = __dirname;
 const port = Number(process.env.PORT) || 4173;
@@ -64,6 +65,15 @@ const server = http.createServer(async (request, response) => {
       omdb: Boolean(process.env.OMDB_API_KEY),
       kv: useKv()
     });
+    return;
+  }
+
+  if (url.pathname === "/api/poster" && request.method === "GET") {
+    const mockReq = {
+      method: "GET",
+      query: { movieId: url.searchParams.get("movieId") || "" }
+    };
+    await posterHandler(mockReq, response);
     return;
   }
 
