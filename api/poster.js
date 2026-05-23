@@ -1,7 +1,13 @@
+const fs = require("fs");
+const path = require("path");
 const { loadMovieCatalog } = require("../lib/movie-catalog");
 const { posterSources } = require("../lib/poster-resolve");
 
 const catalogById = new Map(loadMovieCatalog().map((movie) => [movie.id, movie]));
+const postersPath = path.join(__dirname, "..", "posters.json");
+const POSTER_URLS = fs.existsSync(postersPath)
+  ? JSON.parse(fs.readFileSync(postersPath, "utf8"))
+  : {};
 
 async function fetchPosterBuffer(url) {
   const response = await fetch(url, {

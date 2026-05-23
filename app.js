@@ -5,6 +5,9 @@ const POLL_MS_MENU = 1000;
 let movies = [];
 let drag = null;
 let pollTimer = null;
+let posterCatalog = {};
+let posterLocalPaths = typeof window !== "undefined" && window.MOVIE_POSTER_PATHS ? window.MOVIE_POSTER_PATHS : {};
+const posterPreloadCache = new Set();
 const defaultSession = {
   participantId: null,
   participantName: null,
@@ -263,6 +266,13 @@ function formatTomato(movie) {
   return typeof movie.tomato === "number" ? `${movie.tomato}%` : "—";
 }
 
+function cardOverviewPreview(movie, maxLength = 132) {
+  const text = String(movie.overview || movie.tagline || "").trim();
+  if (!text) return "";
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength).trim()}…`;
+}
+
 const SCENE_LABELS = ["Highlight", "Key moment", "Cast moment", "Sneak peek"];
 
 function sceneItems(movie) {
@@ -336,20 +346,61 @@ function mediaItems(movie) {
 const moviePosterFallback =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='900' viewBox='0 0 600 900'%3E%3Crect fill='%23151922' width='600' height='900'/%3E%3Ctext x='50%25' y='50%25' fill='%239aa6ba' font-family='sans-serif' font-size='22' text-anchor='middle' dominant-baseline='middle'%3EPoster%3C/text%3E%3C/svg%3E";
 
+async function loadPosterCatalog() {
+  if (window.MOVIE_POSTER_PATHS) {
+    posterLocalPaths = window.MOVIE_POSTER_PATHS;
+  }
+  try {
+    posterCatalog = await fetch("/posters.json").then((response) => response.json());
+  } catch {
+    posterCatalog = {};
+  }
+  try {
+    const manifest = await fetch("/posters-manifest.json").then((response) => response.json());
+    posterLocalPaths = { ...manifest, ...posterLocalPaths };
+  } catch {
+    // poster-paths.js already loaded
+  }
+}
+
+function localPosterCandidates(movieId) {
+  const paths = [];
+  const add = (url) => {
+    if (url && !paths.includes(url)) paths.push(url);
+  };
+  add(posterLocalPaths[movieId]);
+  add(`/posters/${movieId}.jpg`);
+  add(`/posters/${movieId}.png`);
+  add(`/posters/${movieId}.webp`);
+  return paths;
+}
+
+function posterUrlFor(movie) {
+  const local = localPosterCandidates(movie.id);
+  return local[0] || posterCatalog[movie.id] || movie.poster;
+}
+
 function posterProxyUrl(movie) {
   return `/api/poster?movieId=${encodeURIComponent(movie.id)}`;
 }
 
-/** Vertical 2:3 crop — same size on every card, no horizontal letterboxing */
-function weservPosterUrl(movie) {
-  const raw = movie.poster;
-  if (!raw || !/^https?:\/\//i.test(raw)) return null;
-  const path = raw.replace(/^https?:\/\//i, "");
-  return `https://images.weserv.nl/?url=${encodeURIComponent(path)}&w=780&h=1170&fit=cover&output=jpg`;
+function posterFallbackChain(movie) {
+  const remote = posterCatalog[movie.id] || movie.poster;
+  return [...localPosterCandidates(movie.id), remote, posterProxyUrl(movie), moviePosterFallback].filter(
+    (url, index, list) => url && list.indexOf(url) === index
+  );
 }
 
-function posterFallbackChain(movie) {
-  return [weservPosterUrl(movie), posterProxyUrl(movie), moviePosterFallback].filter(Boolean);
+function preloadPoster(movie) {
+  if (!movie?.id) return;
+  posterFallbackChain(movie).slice(0, 2).forEach((src) => {
+    if (!src || posterPreloadCache.has(src)) return;
+    posterPreloadCache.add(src);
+    const img = new Image();
+    img.decoding = "async";
+    img.referrerPolicy = "no-referrer";
+    img.src = src;
+  });
 }
 
 function imageTag(movie, alt, className) {
@@ -368,11 +419,16 @@ function wirePosterImages(root = document) {
     } catch {
       fallbacks = [];
     }
-    img.addEventListener("error", () => {
-      if (!fallbacks.length) return;
+    const tryNext = () => {
+      if (!fallbacks.length) {
+        img.classList.add("poster-missing");
+        return;
+      }
       img.src = fallbacks.shift();
       img.dataset.posterFallbacks = encodeURIComponent(JSON.stringify(fallbacks));
-    });
+    };
+    img.addEventListener("error", tryNext);
+    img.addEventListener("load", () => img.classList.remove("poster-missing"));
   });
 }
 
@@ -531,7 +587,11 @@ async function loadLocalCatalog() {
   });
   return [...byId.values()].map((movie) => {
     const trailerYouTubeId = TRAILER_OVERRIDES[movie.id] || movie.trailerYouTubeId;
-    const patched = { ...movie, trailerYouTubeId };
+    const patched = {
+      ...movie,
+      trailerYouTubeId,
+      poster: posterCatalog[movie.id] || movie.poster
+    };
     return {
       ...patched,
       scenes: patched.scenes?.length ? patched.scenes : buildGalleryFallback(patched)
@@ -553,7 +613,7 @@ async function loadMovies() {
         ...movie,
         id: stableId || movie.id,
         imdbId: movie.imdbId,
-        poster: local?.poster || movie.poster,
+        poster: posterCatalog[stableId || movie.id] || local?.poster || movie.poster,
         scenes: movie.scenes?.length ? movie.scenes : buildGalleryFallback(local || movie)
       };
       return merged;
@@ -801,6 +861,7 @@ function renderDeck() {
   }
 
   const stack = deckMovies().filter((candidate) => !mySwipes()[candidate.id]).slice(0, 3).reverse();
+  stack.forEach((candidate) => preloadPoster(candidate));
 
   stack.forEach((candidate, index) => {
     const card = document.createElement("article");
@@ -819,6 +880,11 @@ function renderDeck() {
         <div class="card-copy" role="button" tabindex="0" aria-label="Open ${candidate.title} overview">
           <h3>${candidate.title}</h3>
           <div class="movie-meta">${renderMovieMeta(candidate)}</div>
+          ${
+            cardOverviewPreview(candidate)
+              ? `<p class="card-overview">${cardOverviewPreview(candidate)}</p>`
+              : ""
+          }
         </div>
         ${
           isTopCard
@@ -826,9 +892,9 @@ function renderDeck() {
               <div class="tinder-actions" aria-label="Swipe actions">
                 <button class="round-action rewind" data-action="rewind" type="button" aria-label="Undo last swipe">↺</button>
                 <div class="tinder-actions-main">
-                  <button class="round-action main reject" data-action="pass" type="button" aria-label="Pass">✕</button>
-                  <button class="round-action main super" data-action="super" type="button" aria-label="Super like">★</button>
-                  <button class="round-action main like" data-action="like" type="button" aria-label="Like">♥</button>
+                  <button class="round-action main reject" data-action="pass" type="button" aria-label="Pass"><span class="action-glyph action-glyph-x" aria-hidden="true">✕</span></button>
+                  <button class="round-action main super" data-action="super" type="button" aria-label="Super like"><span class="action-glyph" aria-hidden="true">★</span></button>
+                  <button class="round-action main like" data-action="like" type="button" aria-label="Like"><span class="action-glyph" aria-hidden="true">♥</span></button>
                 </div>
               </div>
             `
@@ -1188,6 +1254,7 @@ function promptName(defaultValue = "") {
 }
 
 async function bootstrap() {
+  await loadPosterCatalog();
   await loadMovies();
 
   const urlRoom = readRoomFromUrl();

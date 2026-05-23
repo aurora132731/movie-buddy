@@ -1,4 +1,4 @@
-{
+window.MOVIE_POSTER_PATHS={
   "arrival": "/posters/arrival.jpg",
   "avatar": "/posters/avatar.jpg",
   "barbie": "/posters/barbie.jpg",
@@ -29,4 +29,4 @@
   "titanic": "/posters/titanic.jpg",
   "top-gun-maverick": "/posters/top-gun-maverick.jpg",
   "whiplash": "/posters/whiplash.jpg"
-}
+};

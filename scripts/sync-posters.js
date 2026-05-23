@@ -44,6 +44,7 @@ function fetchBuffer(url) {
     const ext = url.includes(".png") ? "png" : "jpg";
     const filePath = path.join(outDir, `${id}.${ext}`);
     try {
+      await new Promise((r) => setTimeout(r, 400));
       const buffer = await fetchBuffer(url);
       if (buffer.length < 2000) {
         throw new Error("file too small");
@@ -65,5 +66,9 @@ function fetchBuffer(url) {
     }
   });
   fs.writeFileSync(path.join(root, "posters-manifest.json"), JSON.stringify(manifest, null, 2));
-  console.log(`Done: ${ok} saved, ${fail} failed`);
+  fs.writeFileSync(
+    path.join(root, "poster-paths.js"),
+    `window.MOVIE_POSTER_PATHS = ${JSON.stringify(manifest, null, 2)};\n`
+  );
+  console.log(`Done: ${ok} saved, ${fail} failed, manifest ${Object.keys(manifest).length} movies`);
 })();

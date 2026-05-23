@@ -44,8 +44,13 @@ input {
 .screen-swipe-full {
   display: flex;
   flex-direction: column;
-  min-height: calc(100dvh - 40px);
-  padding: 0 10px calc(72px + env(safe-area-inset-bottom, 0px));
+  min-height: calc(100dvh - 24px);
+  padding: 0 6px calc(64px + env(safe-area-inset-bottom, 0px));
+}
+
+.screen-swipe-full.active {
+  padding-left: 4px;
+  padding-right: 4px;
 }
 
 .screen-swipe-full.active ~ .bottom-nav {
@@ -57,8 +62,9 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 10px;
-  padding: 0 4px;
+  margin-bottom: 6px;
+  padding: 2px 2px 4px;
+  flex-shrink: 0;
 }
 
 .swipe-stats {
@@ -480,7 +486,7 @@ h3 {
 .deck-wrap {
   display: flex;
   flex: 1;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
   width: 100%;
   min-height: 0;
@@ -488,9 +494,13 @@ h3 {
 
 .deck {
   position: relative;
-  width: min(100%, 400px);
-  height: min(72dvh, calc(100dvh - 132px));
-  max-height: 720px;
+  width: 100%;
+  max-width: 440px;
+  height: 100%;
+  min-height: 0;
+  flex: 1;
+  max-height: calc(100dvh - 96px - env(safe-area-inset-bottom, 0px));
+  margin: 0 auto;
   aspect-ratio: 9 / 16;
 }
 
@@ -560,6 +570,10 @@ h3 {
   background: #0a0c10;
 }
 
+.media-image-poster.poster-missing {
+  opacity: 0.35;
+}
+
 .media-image-cover {
   object-fit: cover;
   object-position: center center;
@@ -616,13 +630,13 @@ h3 {
   bottom: 0;
   left: 0;
   z-index: 6;
-  padding: 0 0 max(10px, env(safe-area-inset-bottom, 0px));
+  padding: 0 0 8px;
   background: linear-gradient(
     180deg,
     transparent 0%,
-    rgba(0, 0, 0, 0.35) 12%,
-    rgba(0, 0, 0, 0.82) 42%,
-    rgba(0, 0, 0, 0.98) 100%
+    rgba(0, 0, 0, 0.25) 8%,
+    rgba(0, 0, 0, 0.72) 32%,
+    rgba(0, 0, 0, 0.96) 100%
   );
   pointer-events: none;
 }
@@ -795,14 +809,27 @@ h3 {
 }
 
 .card-copy {
-  padding: 36px 14px 6px;
+  padding: 52px 16px 4px;
   cursor: pointer;
 }
 
 .card-copy h3 {
-  margin: 0 0 8px;
-  font-size: clamp(28px, 7vw, 34px);
-  line-height: 1.05;
+  margin: 0 0 6px;
+  font-size: clamp(30px, 8.2vw, 36px);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+}
+
+.card-overview {
+  margin: 8px 0 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
 }
 
 .movie-meta {
@@ -813,7 +840,7 @@ h3 {
 
 .card-footer .movie-meta {
   gap: 6px;
-  margin-bottom: 6px;
+  margin-bottom: 0;
 }
 
 .pill {
@@ -893,17 +920,17 @@ h3 {
 
 .tinder-actions {
   display: grid;
-  grid-template-columns: 40px 1fr;
+  grid-template-columns: 44px 1fr;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px 2px;
+  gap: 10px;
+  padding: 10px 12px 6px;
 }
 
 .tinder-actions-main {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 20px;
 }
 
 .round-action {
@@ -921,21 +948,47 @@ h3 {
 }
 
 .round-action.main {
-  width: 54px;
-  height: 54px;
-  font-size: 28px;
+  width: 60px;
+  height: 60px;
+  font-size: 0;
   line-height: 1;
+}
+
+.action-glyph {
+  display: block;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.action-glyph-x {
+  font-size: 40px;
+  font-weight: 900;
+  transform: scaleX(1.08);
 }
 
 .round-action.reject {
   color: #ff5a8a;
+}
+
+.round-action.reject .action-glyph-x {
   text-shadow:
-    0 0 12px rgba(255, 90, 140, 0.95),
-    0 0 26px rgba(255, 50, 90, 0.55);
+    0 0 14px rgba(255, 90, 140, 0.95),
+    0 0 28px rgba(255, 50, 90, 0.6);
+}
+
+.round-action.super .action-glyph {
+  font-size: 34px;
+}
+
+.round-action.like .action-glyph {
+  font-size: 32px;
 }
 
 .round-action.like {
   color: #b8ff5c;
+}
+
+.round-action.like .action-glyph {
   text-shadow:
     0 0 12px rgba(184, 255, 92, 0.95),
     0 0 26px rgba(120, 255, 70, 0.55);
@@ -943,7 +996,9 @@ h3 {
 
 .round-action.super {
   color: #62d4ff;
-  font-size: 32px;
+}
+
+.round-action.super .action-glyph {
   text-shadow:
     0 0 12px rgba(98, 212, 255, 0.95),
     0 0 26px rgba(60, 170, 255, 0.55);
